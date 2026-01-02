@@ -1,7 +1,8 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { authRouter } from "./routes/auth";
+import { ordersRouter } from "./routes/orders";
 import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
@@ -12,6 +13,7 @@ const frontendOrigin = process.env.FRONTEND_ORIGIN ?? "http://localhost:3000";
 app.use(cors({ origin: frontendOrigin, credentials: true }));
 app.use(express.json());
 app.use("/auth", authRouter);
+app.use("/orders", ordersRouter);
 
 // Protected route to get current user info
 app.get("/me", requireAuth, (req, res) => {
