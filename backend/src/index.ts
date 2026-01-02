@@ -1,10 +1,12 @@
 ﻿import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import http from "http";
 import { authRouter } from "./routes/auth";
 import { ordersRouter } from "./routes/orders";
 import { driverRouter } from "./routes/driver";
 import { requireAuth } from "./middleware/auth";
+import { initSocket } from "./socket";
 
 dotenv.config();
 
@@ -29,7 +31,10 @@ app.get("/health", (req, res) => {
 });
 
 const PORT = process.env.PORT || 4000;
+const server = http.createServer(app);
 
-app.listen(PORT, () => {
+initSocket(server);
+
+server.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT}`);
 });

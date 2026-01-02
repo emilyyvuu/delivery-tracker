@@ -1,6 +1,7 @@
 ﻿import { Router } from "express";
 import { pool } from "../db";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { getIO } from "../socket";
 
 type AuthUser = {
   userId: string;
@@ -47,6 +48,15 @@ async function transitionOrderStatus(
     [nextStatus, orderId]
   );
 
+  try {
+    getIO().to(orderId).emit("order:status", {
+      orderId,
+      status: updated.rows[0].status,
+    });
+  } catch (error) {
+    console.warn("Socket.io not available for order status update", error);
+  }
+
   return { status: 200 as const, order: updated.rows[0] };
 }
 
@@ -64,7 +74,7 @@ ordersRouter.post("/", requireAuth, requireRole("CUSTOMER"), async (req, res) =>
   const user = (req as any).user as AuthUser;
 
   try {
-    const driverResult = await pool.query( // TODO: change driver assignment logic
+    const driverResult = await pool.query(
       "SELECT id FROM users WHERE role = 'DRIVER' ORDER BY created_at ASC LIMIT 1"
     );
     const driverId = driverResult.rows[0]?.id ?? null;
