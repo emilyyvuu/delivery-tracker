@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
-
-type UserRole = "CUSTOMER" | "DRIVER";
+import type { UserRole } from "@/types/models";
 
 export default function RegisterPage() {
   const router = useRouter();
