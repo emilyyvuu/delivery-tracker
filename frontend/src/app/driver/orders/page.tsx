@@ -1,9 +1,16 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { createSocket } from "@/lib/socket";
+import type { Socket } from "socket.io-client";
 import type { Order } from "@/types/models";
+
+type LivePosition = {
+  lat: number;
+  lng: number;
+};
 
 export default function DriverOrders() {
   const router = useRouter();
@@ -11,6 +18,12 @@ export default function DriverOrders() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [liveOrderId, setLiveOrderId] = useState<string | null>(null);
+  const [livePosition, setLivePosition] = useState<LivePosition | null>(null);
+
+  const socketRef = useRef<Socket | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressRef = useRef(0);
 
   const loadOrders = useCallback(async () => {
     setError(null);
@@ -35,9 +48,66 @@ export default function DriverOrders() {
     }
   }, []);
 
+  const stopLiveUpdates = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    progressRef.current = 0;
+    setLiveOrderId(null);
+    setLivePosition(null);
+  }, []);
+
+  const startLiveUpdates = useCallback(
+    (order: Order) => {
+      const socket = socketRef.current;
+      if (!socket) return;
+
+      stopLiveUpdates();
+      socket.emit("order:join", order.id);
+
+      progressRef.current = 0;
+      setLiveOrderId(order.id);
+
+      const emitUpdate = () => {
+        const nextProgress = Math.min(1, progressRef.current + 0.05);
+        progressRef.current = nextProgress;
+
+        const lat =
+          order.pickup_lat + (order.dropoff_lat - order.pickup_lat) * nextProgress;
+        const lng =
+          order.pickup_lng + (order.dropoff_lng - order.pickup_lng) * nextProgress;
+
+        setLivePosition({ lat, lng });
+        socket.emit("location:update", {
+          orderId: order.id,
+          lat,
+          lng,
+        });
+      };
+
+      emitUpdate();
+      intervalRef.current = setInterval(emitUpdate, 3000);
+    },
+    [stopLiveUpdates]
+  );
+
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
+
+  useEffect(() => {
+    const socket = createSocket();
+    socket.connect();
+    socketRef.current = socket;
+
+    return () => {
+      stopLiveUpdates();
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [stopLiveUpdates]);
 
   async function onLogout() {
     await apiFetch("/auth/logout", { method: "POST" });
@@ -58,6 +128,7 @@ export default function DriverOrders() {
       }
 
       setOrders((prev) => prev.map((order) => (order.id === orderId ? data : order)));
+      startLiveUpdates(data as Order);
     } catch (err) {
       console.error(err);
       setError("Failed to start order");
@@ -80,6 +151,9 @@ export default function DriverOrders() {
       }
 
       setOrders((prev) => prev.map((order) => (order.id === orderId ? data : order)));
+      if (liveOrderId === orderId) {
+        stopLiveUpdates();
+      }
     } catch (err) {
       console.error(err);
       setError("Failed to complete order");
@@ -104,6 +178,40 @@ export default function DriverOrders() {
           Log out
         </button>
       </div>
+
+      {liveOrderId && (
+        <section
+          style={{
+            marginTop: 16,
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: "#fafafa",
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <strong>Live updates active</strong>
+          <span style={{ fontSize: 12, color: "#666" }}>{liveOrderId}</span>
+          {livePosition && (
+            <span style={{ fontSize: 13 }}>
+              Sending: {livePosition.lat.toFixed(4)}, {livePosition.lng.toFixed(4)}
+            </span>
+          )}
+          <button
+            onClick={stopLiveUpdates}
+            style={{
+              width: 120,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #999",
+              background: "#fff",
+            }}
+          >
+            Stop live
+          </button>
+        </section>
+      )}
 
       {loading && <p style={{ marginTop: 16 }}>Loading orders...</p>}
       {error && <p style={{ marginTop: 16, color: "crimson" }}>{error}</p>}

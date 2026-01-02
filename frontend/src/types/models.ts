@@ -11,3 +11,10 @@ export type Order = {
   dropoff_lng: number;
   created_at: string;
 };
+
+export type LocationUpdate = {
+  orderId: string;
+  lat: number;
+  lng: number;
+  timestamp?: string;
+};
