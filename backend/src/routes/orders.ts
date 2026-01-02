@@ -11,6 +11,45 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+/**
+ * Helper to transition order status with validation
+ */
+async function transitionOrderStatus(
+  orderId: string,
+  driverId: string,
+  expectedStatus: "ASSIGNED" | "IN_PROGRESS",
+  nextStatus: "IN_PROGRESS" | "COMPLETED"
+) {
+  const orderResult = await pool.query(
+    "SELECT id, driver_id, status FROM orders WHERE id = $1",
+    [orderId]
+  );
+
+  const order = orderResult.rows[0];
+  if (!order) {
+    return { status: 404 as const, error: "Order not found" };
+  }
+
+  if (order.driver_id !== driverId) {
+    return { status: 403 as const, error: "Forbidden (not assigned)" };
+  }
+
+  if (order.status !== expectedStatus) {
+    const action = nextStatus === "IN_PROGRESS" ? "start" : "complete";
+    return {
+      status: 400 as const,
+      error: `Order must be ${expectedStatus} to ${action}`,
+    };
+  }
+
+  const updated = await pool.query(
+    "UPDATE orders SET status = $1 WHERE id = $2 RETURNING *",
+    [nextStatus, orderId]
+  );
+
+  return { status: 200 as const, order: updated.rows[0] };
+}
+
 export const ordersRouter = Router();
 
 // POST /orders (customer only)
@@ -71,3 +110,56 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Server error" });
   }
 });
+
+// POST /orders/:id/start (driver only)
+ordersRouter.post("/:id/start", requireAuth, requireRole("DRIVER"), async (req, res) => {
+  const user = (req as any).user as AuthUser;
+  const orderId = req.params.id;
+
+  try {
+    const result = await transitionOrderStatus(
+      orderId,
+      user.userId,
+      "ASSIGNED",
+      "IN_PROGRESS"
+    );
+
+    if (result.status !== 200) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    return res.json(result.order);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /orders/:id/complete (driver only)
+ordersRouter.post(
+  "/:id/complete",
+  requireAuth,
+  requireRole("DRIVER"),
+  async (req, res) => {
+    const user = (req as any).user as AuthUser;
+    const orderId = req.params.id;
+
+    try {
+      const result = await transitionOrderStatus(
+        orderId,
+        user.userId,
+        "IN_PROGRESS",
+        "COMPLETED"
+      );
+
+      if (result.status !== 200) {
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      return res.json(result.order);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Server error" });
+    }
+  }
+);

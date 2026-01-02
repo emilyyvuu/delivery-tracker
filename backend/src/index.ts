@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { authRouter } from "./routes/auth";
 import { ordersRouter } from "./routes/orders";
+import { driverRouter } from "./routes/driver";
 import { requireAuth } from "./middleware/auth";
 
 dotenv.config();
@@ -14,6 +15,7 @@ app.use(cors({ origin: frontendOrigin, credentials: true }));
 app.use(express.json());
 app.use("/auth", authRouter);
 app.use("/orders", ordersRouter);
+app.use("/driver", driverRouter);
 
 // Protected route to get current user info
 app.get("/me", requireAuth, (req, res) => {
@@ -29,5 +31,5 @@ app.get("/health", (req, res) => {
 const PORT = process.env.PORT || 4000;
 
 app.listen(PORT, () => {
-  console.log(`✅ Backend listening on http://localhost:${PORT}`);
+  console.log(`Backend listening on http://localhost:${PORT}`);
 });
